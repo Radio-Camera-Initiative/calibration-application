@@ -62,6 +62,122 @@ __global__ void flag_mask_kernel(
     return;
 }
 
+/*  The assumed shape is as follows:
+ *      Visibilities:
+ *          (channels, baselines, polarizations) - float, float
+ *      Antennas:
+ *          (baselines, antennas) - int
+ *      Jones:
+ *          (channels, antennas, polarizations) - float, float
+ */
+
+__global__ void jones_kernel(
+    int nchan,
+    int nbaseline,
+    int npol,
+    int nant,
+    float* vis,
+    int* ant,
+    float* jones
+) {
+    // TODO: put antennas and/or jones into shared mem for faster access
+    int jones_chan = blockIdx.x * nant * npol * 2;
+    int vis_chan = blockIdx.x * nbaseline * npol * 2;
+
+    for (int i = threadIdx.x; i < nbaseline; i += blockDim.x) {
+        // [0+1i  2+3i]
+        // [4+5i  6+7i]
+
+        // access first matrix for matrixmul mat1 * mat2
+        float mat1[8];
+        // TODO: check order that reference is called
+        float* matrix = &jones[jones_chan + (ant[(i * 2)] * npol * 2)];
+        for (int j = 0; j < npol * 2; j++) {
+            mat1[j] = matrix[j];
+        }
+
+        float mat2[8];
+        matrix = &vis[vis_chan + (i * npol * 2)];
+        for (int j = 0; j < npol * 2; j++) {
+            mat2[j] = matrix[j];
+        }
+        float mat3[8];
+
+        mat3[0] = ((mat1[0] * mat2[0]) - (mat1[1] * mat2[1])) +
+            ((mat1[2] * mat2[4]) - (mat1[3] * mat2[5]));
+        mat3[1] = ((mat1[0] * mat2[1]) + (mat1[1] * mat2[0])) +
+            ((mat1[2] * mat2[5]) + (mat1[3] * mat2[4]));
+
+        mat3[2] = ((mat1[0] * mat2[2]) - (mat1[1] * mat2[3])) +
+            ((mat1[2] * mat2[6]) - (mat1[3] * mat2[7]));
+        mat3[3] = ((mat1[0] * mat2[3]) + (mat1[1] * mat2[2])) +
+            ((mat1[2] * mat2[7]) + (mat1[3] * mat2[6]));
+
+        mat3[4] = ((mat1[4] * mat2[0]) - (mat1[5] * mat2[1])) +
+            ((mat1[6] * mat2[4]) - (mat1[7] * mat2[5]));
+        mat3[5] = ((mat1[4] * mat2[1]) + (mat1[5] * mat2[0])) +
+            ((mat1[6] * mat2[5]) + (mat1[7] * mat2[4]));
+
+        mat3[6] = ((mat1[4] * mat2[2]) - (mat1[5] * mat2[3])) +
+            ((mat1[6] * mat2[6]) - (mat1[7] * mat2[7]));
+        mat3[7] = ((mat1[4] * mat2[3]) + (mat1[5] * mat2[2])) +
+            ((mat1[6] * mat2[7]) + (mat1[7] * mat2[6]));
+
+        // access second matrix for matrixmul.
+        // Also need to conjugate transpose mat1
+        matrix = &jones[jones_chan + (ant[(i * 2) + 1] * npol * 2)];
+        for (int j = 0; j < npol * 2; j++) {
+            mat1[j] = matrix[j];
+        }
+        mat1[1] = -mat1[1];
+        float temp_re = mat1[2];
+        float temp_im = mat1[3];
+        mat1[2] = mat1[4];
+        mat1[3] = -mat1[5];
+        mat1[4] = temp_re;
+        mat1[5] = -temp_im;
+        mat1[7] = -mat1[7];
+
+        // mat3 * mat1
+        mat2[0] = ((mat3[0] * mat1[0]) - (mat3[1] * mat1[1])) +
+            ((mat3[2] * mat1[4]) - (mat3[3] * mat1[5]));
+        mat2[1] = ((mat3[0] * mat1[1]) + (mat3[1] * mat1[0])) +
+            ((mat3[2] * mat1[5]) + (mat3[3] * mat1[4]));
+
+        mat2[2] = ((mat3[0] * mat1[2]) - (mat3[1] * mat1[3])) +
+            ((mat3[2] * mat1[6]) - (mat3[3] * mat1[7]));
+        mat2[3] = ((mat3[0] * mat1[3]) + (mat3[1] * mat1[2])) +
+            ((mat3[2] * mat1[7]) + (mat3[3] * mat1[6]));
+
+        mat2[4] = ((mat3[4] * mat1[0]) - (mat3[5] * mat1[1])) +
+            ((mat3[6] * mat1[4]) - (mat3[7] * mat1[5]));
+        mat2[5] = ((mat3[4] * mat1[1]) + (mat3[5] * mat1[0])) +
+            ((mat3[6] * mat1[5]) + (mat3[7] * mat1[4]));
+
+        mat2[6] = ((mat3[4] * mat1[2]) - (mat3[5] * mat1[3])) +
+            ((mat3[6] * mat1[6]) - (mat3[7] * mat1[7]));
+        mat2[7] = ((mat3[4] * mat1[3]) + (mat3[5] * mat1[2])) +
+            ((mat3[6] * mat1[7]) + (mat3[7] * mat1[6]));
+
+        // do final transform for iquv (technically need to divide by 2)
+        mat1[0] = mat2[0] + mat2[6];
+        mat1[1] = mat2[1] + mat2[7];
+        mat1[2] = mat2[0] - mat2[6];
+        mat1[3] = mat2[1] - mat2[7];
+        mat1[4] = mat2[3] + mat2[5];
+        mat1[5] = mat2[2] + mat2[4];
+        mat1[6] = mat2[3] - mat2[5];
+        mat1[7] = mat2[2] - mat2[4];
+
+        // copy mat2 back into visibility
+        for (int j = 0; j < npol * 2; j++) {
+            vis[vis_chan + (i * npol * 2) + j] = mat1[j];
+        }// TODO: how to do memcpy for 8 variables?
+    }
+
+}
+
+
 // Make a function to move memory to the GPU, but unneeded with Bifrost as
 // everything is already on the GPU
 void call_flag_mask_kernel(
@@ -96,4 +212,45 @@ void call_flag_mask_kernel(
 
      cudaFree(gpu_vis);
      cudaFree(gpu_mask);
+}
+
+void call_jones_kernel(
+    int nchan,
+    int nbaseline,
+    int npol,
+    int nant, 
+    float* vis,
+    int* ant,
+    float* jones
+) {
+    float* gpu_vis;
+    // &gpu_vis gives reference to piece of memory where pointer is stored
+    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * 2 * sizeof(float));
+    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * 2 * sizeof(float), cudaMemcpyHostToDevice);
+
+    int* gpu_ant;
+    cudaMalloc((void**)&gpu_ant, nbaseline * 2 * sizeof(int));
+    cudaMemcpy(gpu_ant, ant, nbaseline * 2 * sizeof(int), cudaMemcpyHostToDevice);
+
+    float* gpu_jones;
+    cudaMalloc((void**)&gpu_jones, nchan * nant * npol * 2 * sizeof(float));
+    cudaMemcpy(gpu_jones, jones, nchan * nant * npol * 2 * sizeof(float), cudaMemcpyHostToDevice);
+
+    unsigned int blocks = nchan;
+    unsigned int threads_per_block = MAXTHREADS;
+
+    jones_kernel<<<blocks, threads_per_block>>> (nchan, nbaseline, npol, nant, gpu_vis, gpu_ant, gpu_jones);
+
+    // Check for errors on kernel call
+    cudaError err = cudaGetLastError();
+    if (cudaSuccess != err)
+        fprintf(stderr, "Error %s\n", cudaGetErrorString(err));
+    else
+        fprintf(stderr, "No kernel error detected\n");
+
+     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * 2 * sizeof(int), cudaMemcpyDeviceToHost);
+
+     cudaFree(gpu_vis);
+     cudaFree(gpu_ant);
+     cudaFree(gpu_jones);
 }
