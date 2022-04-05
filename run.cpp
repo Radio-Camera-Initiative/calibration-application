@@ -38,7 +38,7 @@ void print_visf(int nchan, int nbaseline, int npol, float* vis) {
 }
 
 void print_jones(int nchan, int nant, int npol, float* jones) {
-    std::cout << "JOnes" << std::endl;
+    std::cout << "Jones" << std::endl;
     for (int c = 0; c < nchan; c++) {
         for (int b = 0; b < nant; b++) {
             std::cout << "[ ";
@@ -55,33 +55,88 @@ void print_jones(int nchan, int nant, int npol, float* jones) {
     }
 }
 
-void test_flagging(int nchan, int nbaseline, int npol) {
-    bool* mask = new bool [nchan * nbaseline * npol] {false};
-    // set all of channel 1, polarization 2 to 1
+/* ASSUMES vis 1 OR 0 */
+void check_flags(int size, bool* mask, float* vis) {
+    for (int i = 0; i < size; i++) {
+        if (mask[i]) {
+            assert(vis[i * CM] == 0.0);
+            assert(vis[i * CM + 1] == 0.0);
+        } else {
+            assert(vis[i * CM] == 1.0);
+            assert(vis[i * CM + 1] == 1.0);
+        }
+    }
+}
+
+void flag_chan1_pol2(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
+
+    std::cout << "set all of channel 1, polarization 2 to true" << std::endl;
     for (int i = 0; i < nbaseline; i++) {
         mask[(1 * nbaseline * npol) + (i * npol) + 2] = true;
     }
-    print_flag_mask(nchan, nbaseline, npol, mask);
 
-    float* vis = new float [nchan * nbaseline * npol * 2];
     // fill with 1s
     std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
-
-    print_visf(nchan, nbaseline, npol, vis);
 
     // now that everything is initialized, run the GPU
     call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
 
     // check vis after the kernel to see if correct channel is 0
-    
-    print_visf(nchan, nbaseline, npol, vis);
+    check_flags(npol * nbaseline * nchan, mask, vis);
 
-    assert(vis[3] == 1.0);
-    assert(vis[nbaseline] == 1.0);
+    std::cout << "Test Passed" << std::endl;
+}
+
+void flag_chan2(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
+
+    std::cout << "set all of channel 2 to true" << std::endl;
     for (int i = 0; i < nbaseline; i++) {
-        assert(vis[(1 * nbaseline * npol * 2) + (i * 2 * npol) + 4] == 0.0);
-        assert(vis[(1 * nbaseline * npol * 2) + (i * 2 * npol) + 4 + IM] == 0.0);
+        mask[(1 * nbaseline * npol) + (i * npol)] = true;
+        mask[(1 * nbaseline * npol) + (i * npol) + 1] = true;
+        mask[(1 * nbaseline * npol) + (i * npol) + 2] = true;
+        mask[(1 * nbaseline * npol) + (i * npol) + 3] = true;
     }
+
+    // fill with 1s
+    std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
+
+    // now that everything is initialized, run the GPU
+    call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
+
+    // check vis after the kernel to see if correct channel is 0
+    check_flags(npol * nbaseline * nchan, mask, vis);
+
+    std::cout << "Test Passed" << std::endl;
+}
+
+void flag_pol01(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
+
+    std::cout << "set all of polarizations 0, 1 to true" << std::endl;
+    for (int c = 0; c < nchan; c++) {
+        for (int i = 0; i < nbaseline; i++) {
+            mask[(c * nbaseline * npol) + (i * npol)] = true;
+            mask[(c * nbaseline * npol) + (i * npol) + 1] = true;
+        }
+    }
+    // fill with 1s
+    std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
+
+    // now that everything is initialized, run the GPU
+    call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
+
+    // check vis after the kernel to see if correct channel is 0
+    check_flags(npol * nbaseline * nchan, mask, vis);
+
+    std::cout << "Test Passed" << std::endl;
+}
+
+void test_flagging(int nchan, int nbaseline, int npol) {
+    bool* mask = new bool [nchan * nbaseline * npol] {false};
+    float* vis = new float [nchan * nbaseline * npol * 2];
+
+    flag_chan1_pol2(nchan, nbaseline, npol, mask, vis);
+    flag_chan2(nchan, nbaseline, npol, mask, vis);
+    flag_pol01(nchan, nbaseline, npol, mask, vis);
 
     delete[] vis;
     delete[] mask;
