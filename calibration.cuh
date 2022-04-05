@@ -1,4 +1,5 @@
 #define IM 1
+#define CM 2
 
 void call_flag_mask_kernel(
     int nchan,

@@ -31,11 +31,11 @@ __global__ void flag_mask_kernel(
 ) {
     // TODO: store mask or vis in shared memory for quicker access
     int mchannel = blockIdx.x * nbaseline * npol;
-    int channel = blockIdx.x * nbaseline * npol * 2;
+    int channel = blockIdx.x * nbaseline * npol * CM;
 
     for (int i = threadIdx.x; i < nbaseline; i += blockDim.x) {
         int mbaseline = (i * npol);
-        int baseline = (i * npol) * 2;
+        int baseline = (i * npol) * CM;
         // each polarization will be set separately
 
         // use bool to make temp float.
@@ -76,8 +76,8 @@ __global__ void jones_kernel(
     float* jones
 ) {
     // TODO: put antennas and/or jones into shared mem for faster access
-    int jones_chan = blockIdx.x * nant * npol * 2;
-    int vis_chan = blockIdx.x * nbaseline * npol * 2;
+    int jones_chan = blockIdx.x * nant * npol * CM;
+    int vis_chan = blockIdx.x * nbaseline * npol * CM;
 
     for (int i = threadIdx.x; i < nbaseline; i += blockDim.x) {
         // [0+1i  2+3i]
@@ -86,14 +86,14 @@ __global__ void jones_kernel(
         // access first matrix for matrixmul mat1 * mat2
         float mat1[8];
         // TODO: check order that reference is called
-        float* matrix = &jones[jones_chan + (ant[(i * 2)] * npol * 2)];
-        for (int j = 0; j < npol * 2; j++) {
+        float* matrix = &jones[jones_chan + (ant[(i * CM)] * npol * CM)];
+        for (int j = 0; j < npol * CM; j++) {
             mat1[j] = matrix[j];
         }
 
         float mat2[8];
-        matrix = &vis[vis_chan + (i * npol * 2)];
-        for (int j = 0; j < npol * 2; j++) {
+        matrix = &vis[vis_chan + (i * npol * CM)];
+        for (int j = 0; j < npol * CM; j++) {
             mat2[j] = matrix[j];
         }
         float mat3[8];
@@ -120,8 +120,8 @@ __global__ void jones_kernel(
 
         // access second matrix for matrixmul.
         // Also need to conjugate transpose mat1
-        matrix = &jones[jones_chan + (ant[(i * 2) + 1] * npol * 2)];
-        for (int j = 0; j < npol * 2; j++) {
+        matrix = &jones[jones_chan + (ant[(i * CM) + 1] * npol * CM)];
+        for (int j = 0; j < npol * CM; j++) {
             mat1[j] = matrix[j];
         }
         mat1[1] = -mat1[1];
@@ -156,8 +156,8 @@ __global__ void jones_kernel(
 
 
         // copy mat2 back into visibility
-        for (int j = 0; j < npol * 2; j++) {
-            vis[vis_chan + (i * npol * 2) + j] = mat1[j];
+        for (int j = 0; j < npol * CM; j++) {
+            vis[vis_chan + (i * npol * CM) + j] = mat1[j];
         }// TODO: how to do memcpy for 8 variables?
     }
 
@@ -175,12 +175,12 @@ void call_flag_mask_kernel(
 ) {
     float* gpu_vis;
     // &gpu_vis gives reference to piece of memory where pointer is stored
-    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * 2 * sizeof(float));
-    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * 2 * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * CM * sizeof(float));
+    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * CM * sizeof(float), cudaMemcpyHostToDevice);
 
     bool* gpu_mask;
-    cudaMalloc((void**)&gpu_mask, nchan * nbaseline* npol * 2 * sizeof(bool));
-    cudaMemcpy(gpu_mask, mask, nchan * nbaseline * npol * 2 * sizeof(bool), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_mask, nchan * nbaseline * npol * sizeof(bool));
+    cudaMemcpy(gpu_mask, mask, nchan * nbaseline * npol * sizeof(bool), cudaMemcpyHostToDevice);
 
     unsigned int blocks = nchan;
     unsigned int threads_per_block = MAXTHREADS;
@@ -194,7 +194,7 @@ void call_flag_mask_kernel(
     else
         fprintf(stderr, "No kernel error detected\n");
 
-     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * 2 * sizeof(float), cudaMemcpyDeviceToHost);
+     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * CM * sizeof(float), cudaMemcpyDeviceToHost);
 
      cudaFree(gpu_vis);
      cudaFree(gpu_mask);
@@ -211,16 +211,16 @@ void call_jones_kernel(
 ) {
     float* gpu_vis;
     // &gpu_vis gives reference to piece of memory where pointer is stored
-    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * 2 * sizeof(float));
-    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * 2 * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * CM * sizeof(float));
+    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * CM * sizeof(float), cudaMemcpyHostToDevice);
 
     int* gpu_ant;
-    cudaMalloc((void**)&gpu_ant, nbaseline * 2 * sizeof(int));
-    cudaMemcpy(gpu_ant, ant, nbaseline * 2 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_ant, nbaseline * CM * sizeof(int));
+    cudaMemcpy(gpu_ant, ant, nbaseline * CM * sizeof(int), cudaMemcpyHostToDevice);
 
     float* gpu_jones;
-    cudaMalloc((void**)&gpu_jones, nchan * nant * npol * 2 * sizeof(float));
-    cudaMemcpy(gpu_jones, jones, nchan * nant * npol * 2 * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_jones, nchan * nant * npol * CM * sizeof(float));
+    cudaMemcpy(gpu_jones, jones, nchan * nant * npol * CM * sizeof(float), cudaMemcpyHostToDevice);
 
     unsigned int blocks = nchan;
     unsigned int threads_per_block = MAXTHREADS;
@@ -234,7 +234,7 @@ void call_jones_kernel(
     else
         fprintf(stderr, "No kernel error detected\n");
 
-     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * 2 * sizeof(int), cudaMemcpyDeviceToHost);
+     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * CM * sizeof(int), cudaMemcpyDeviceToHost);
 
      cudaFree(gpu_vis);
      cudaFree(gpu_ant);
