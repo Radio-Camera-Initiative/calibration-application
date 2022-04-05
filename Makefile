@@ -1,15 +1,14 @@
-CC = /usr/bin/g++-8
+CC = /usr/bin/g++
 
 LD_FLAGS = -lrt
 
-CUDA_PATH       ?= /usr/local/cuda-10.2
+CUDA_PATH       ?= /usr/local/cuda-11.2
 CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
 CUDA_LIB_PATH   ?= $(CUDA_PATH)/lib
 
 # CUDA code generation flags
-GENCODE_FLAGS   := -gencode arch=compute_30,code=sm_30 \
-        -gencode arch=compute_35,code=sm_35 \
+GENCODE_FLAGS   := -gencode arch=compute_35,code=sm_35 \
         -gencode arch=compute_50,code=sm_50 \
         -gencode arch=compute_52,code=sm_52 \
         -gencode arch=compute_60,code=sm_60 \
@@ -44,14 +43,14 @@ endif
 
 NVCCFLAGS += --compiler-bindir $(CC)
 
-TARGETS = flag
+TARGETS = apply
 
 all: $(TARGETS)
 
-flag: run.cpp flag.o
+apply: run.cpp apply.o
 	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
 
-flag.o: calibration.cu
+apply.o: calibration.cu
 	$(NVCC) $(NVCCFLAGS) -O3 $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) -I$(CUDA_INC_PATH) -o $@ -c $<
 
 clean:

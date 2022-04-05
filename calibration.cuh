@@ -5,7 +5,7 @@ void call_flag_mask_kernel(
     int nbaseline,
     int npol,
     const bool* mask,
-    int* vis
+    float* vis
 );
 
 void call_jones_kernel(

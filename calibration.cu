@@ -27,7 +27,7 @@ __global__ void flag_mask_kernel(
     int nbaseline,
     int npol,
     const bool* mask,
-    int* vis
+    float* vis
 ) {
     // TODO: store mask or vis in shared memory for quicker access
     int mchannel = blockIdx.x * nbaseline * npol;
@@ -38,24 +38,19 @@ __global__ void flag_mask_kernel(
         int baseline = (i * npol) * 2;
         // each polarization will be set separately
 
-        // if mask bit is 0, we want to keep the same number. make a mask of 1s
-        //     and bitwise AND
-        // if mask bit is 1, we want to erase the whole thing. make a mask of 0s
-        //     and bitwise AND
-
-        // use mask bit to make temp integer.
-        int m1 = ((int) mask[mchannel + mbaseline]) - 1;
-        vis[channel + baseline] &= m1;
-        vis[channel + baseline + IM] &= m1;
-        int m2 = ((int) mask[mchannel + mbaseline + 1]) - 1;
-        vis[channel + baseline + 2] &= m2;
-        vis[channel + baseline + 2 + IM] &= m2;
-        int m3 = ((int) mask[mchannel + mbaseline + 2]) - 1;
-        vis[channel + baseline + 4] &= m3;
-        vis[channel + baseline + 4 + IM] &= m3;
-        int m4 = ((int) mask[mchannel + mbaseline + 3]) - 1;
-        vis[channel + baseline + 6] &= m4;
-        vis[channel + baseline + 6 + IM] &= m4;
+        // use bool to make temp float.
+        float m1 = static_cast<float>(!mask[mchannel + mbaseline]);
+        vis[channel + baseline] *= m1;
+        vis[channel + baseline + IM] *= m1;
+        float m2 = static_cast<float>(!mask[mchannel + mbaseline + 1]);
+        vis[channel + baseline + 2] *= m2;
+        vis[channel + baseline + 2 + IM] *= m2;
+        float m3 = static_cast<float>(!mask[mchannel + mbaseline + 2]);
+        vis[channel + baseline + 4] *= m3;
+        vis[channel + baseline + 4 + IM] *= m3;
+        float m4 = static_cast<float>(!mask[mchannel + mbaseline + 3]);
+        vis[channel + baseline + 6] *= m4;
+        vis[channel + baseline + 6 + IM] *= m4;
 
     }
 
@@ -159,15 +154,6 @@ __global__ void jones_kernel(
         mat2[7] = ((mat3[4] * mat1[3]) + (mat3[5] * mat1[2])) +
             ((mat3[6] * mat1[7]) + (mat3[7] * mat1[6]));
 
-        // do final transform for iquv (technically need to divide by 2)
-        mat1[0] = mat2[0] + mat2[6];
-        mat1[1] = mat2[1] + mat2[7];
-        mat1[2] = mat2[0] - mat2[6];
-        mat1[3] = mat2[1] - mat2[7];
-        mat1[4] = mat2[3] + mat2[5];
-        mat1[5] = mat2[2] + mat2[4];
-        mat1[6] = mat2[3] - mat2[5];
-        mat1[7] = mat2[2] - mat2[4];
 
         // copy mat2 back into visibility
         for (int j = 0; j < npol * 2; j++) {
@@ -185,12 +171,12 @@ void call_flag_mask_kernel(
     int nbaseline,
     int npol,
     const bool* mask,
-    int* vis
+    float* vis
 ) {
-    int* gpu_vis;
+    float* gpu_vis;
     // &gpu_vis gives reference to piece of memory where pointer is stored
-    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * 2 * sizeof(int));
-    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * 2 * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * 2 * sizeof(float));
+    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * 2 * sizeof(float), cudaMemcpyHostToDevice);
 
     bool* gpu_mask;
     cudaMalloc((void**)&gpu_mask, nchan * nbaseline* npol * 2 * sizeof(bool));
@@ -208,7 +194,7 @@ void call_flag_mask_kernel(
     else
         fprintf(stderr, "No kernel error detected\n");
 
-     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * 2 * sizeof(int), cudaMemcpyDeviceToHost);
+     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * 2 * sizeof(float), cudaMemcpyDeviceToHost);
 
      cudaFree(gpu_vis);
      cudaFree(gpu_mask);

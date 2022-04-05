@@ -20,23 +20,6 @@ void print_flag_mask(int nchan, int nbaseline, int npol, bool* mask) {
     }
 }
 
-void print_vis(int nchan, int nbaseline, int npol, int* vis) {
-    for (int c = 0; c < nchan; c++) {
-        for (int b = 0; b < nbaseline; b++) {
-            std::cout << "[ ";
-            for (int p = 0; p < npol * 2; p += 2) {
-                std::cout << 
-                    vis[(c * nbaseline * npol * 2) + (b * npol * 2) + p] 
-                    << " + " << 
-                    vis[(c * nbaseline * npol * 2) + (b * npol * 2) + p + IM] 
-                    << 'i' << ' ';
-            }
-            std::cout << "] ";
-        }
-        std::cout << std::endl;
-    }
-}
-
 void print_visf(int nchan, int nbaseline, int npol, float* vis) {
     for (int c = 0; c < nchan; c++) {
         for (int b = 0; b < nbaseline; b++) {
@@ -80,24 +63,24 @@ void test_flagging(int nchan, int nbaseline, int npol) {
     }
     print_flag_mask(nchan, nbaseline, npol, mask);
 
-    int* vis = new int [nchan * nbaseline * npol * 2];
+    float* vis = new float [nchan * nbaseline * npol * 2];
     // fill with 1s
-    std::fill_n(vis, nchan * nbaseline * npol * 2, 1);
+    std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
 
-    print_vis(nchan, nbaseline, npol, vis);
+    print_visf(nchan, nbaseline, npol, vis);
 
     // now that everything is initialized, run the GPU
     call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
 
     // check vis after the kernel to see if correct channel is 0
     
-    print_vis(nchan, nbaseline, npol, vis);
+    print_visf(nchan, nbaseline, npol, vis);
 
-    assert(vis[3] == 1);
-    assert(vis[nbaseline] == 1);
+    assert(vis[3] == 1.0);
+    assert(vis[nbaseline] == 1.0);
     for (int i = 0; i < nbaseline; i++) {
-        assert(vis[(1 * nbaseline * npol * 2) + (i * 2 * npol) + 4] == 0);
-        assert(vis[(1 * nbaseline * npol * 2) + (i * 2 * npol) + 4 + IM] == 0);
+        assert(vis[(1 * nbaseline * npol * 2) + (i * 2 * npol) + 4] == 0.0);
+        assert(vis[(1 * nbaseline * npol * 2) + (i * 2 * npol) + 4 + IM] == 0.0);
     }
 
     delete[] vis;
@@ -196,7 +179,7 @@ int main(int argc, char **argv) {
     int nbaseline = nant * (nant - 1) / 2;
     int npol = 4;
 
-    // test_flagging(nchan, nbaseline, npol);
+    test_flagging(nchan, nbaseline, npol);
 
     test_jones_identity(nchan, nbaseline, npol, nant);
 
