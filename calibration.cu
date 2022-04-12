@@ -66,6 +66,32 @@ __global__ void flag_mask_kernel(
  *          (channels, antennas, polarizations) - float, float
  */
 
+__device__ void mat_mul_complex(
+    float answer[],
+    float left[],
+    float right[]
+) {
+    answer[0] = ((left[0] * right[0]) - (left[1] * right[1])) +
+        ((left[2] * right[4]) - (left[3] * right[5]));
+    answer[1] = ((left[0] * right[1]) + (left[1] * right[0])) +
+        ((left[2] * right[5]) + (left[3] * right[4]));
+
+    answer[2] = ((left[0] * right[2]) - (left[1] * right[3])) +
+        ((left[2] * right[6]) - (left[3] * right[7]));
+    answer[3] = ((left[0] * right[3]) + (left[1] * right[2])) +
+        ((left[2] * right[7]) + (left[3] * right[6]));
+
+    answer[4] = ((left[4] * right[0]) - (left[5] * right[1])) +
+        ((left[6] * right[4]) - (left[7] * right[5]));
+    answer[5] = ((left[4] * right[1]) + (left[5] * right[0])) +
+        ((left[6] * right[5]) + (left[7] * right[4]));
+
+    answer[6] = ((left[4] * right[2]) - (left[5] * right[3])) +
+        ((left[6] * right[6]) - (left[7] * right[7]));
+    answer[7] = ((left[4] * right[3]) + (left[5] * right[2])) +
+        ((left[6] * right[7]) + (left[7] * right[6]));
+}
+
 __global__ void jones_kernel(
     int nchan,
     int nbaseline,
@@ -98,25 +124,7 @@ __global__ void jones_kernel(
         }
         float mat3[8];
 
-        mat3[0] = ((mat1[0] * mat2[0]) - (mat1[1] * mat2[1])) +
-            ((mat1[2] * mat2[4]) - (mat1[3] * mat2[5]));
-        mat3[1] = ((mat1[0] * mat2[1]) + (mat1[1] * mat2[0])) +
-            ((mat1[2] * mat2[5]) + (mat1[3] * mat2[4]));
-
-        mat3[2] = ((mat1[0] * mat2[2]) - (mat1[1] * mat2[3])) +
-            ((mat1[2] * mat2[6]) - (mat1[3] * mat2[7]));
-        mat3[3] = ((mat1[0] * mat2[3]) + (mat1[1] * mat2[2])) +
-            ((mat1[2] * mat2[7]) + (mat1[3] * mat2[6]));
-
-        mat3[4] = ((mat1[4] * mat2[0]) - (mat1[5] * mat2[1])) +
-            ((mat1[6] * mat2[4]) - (mat1[7] * mat2[5]));
-        mat3[5] = ((mat1[4] * mat2[1]) + (mat1[5] * mat2[0])) +
-            ((mat1[6] * mat2[5]) + (mat1[7] * mat2[4]));
-
-        mat3[6] = ((mat1[4] * mat2[2]) - (mat1[5] * mat2[3])) +
-            ((mat1[6] * mat2[6]) - (mat1[7] * mat2[7]));
-        mat3[7] = ((mat1[4] * mat2[3]) + (mat1[5] * mat2[2])) +
-            ((mat1[6] * mat2[7]) + (mat1[7] * mat2[6]));
+        mat_mul_complex(mat3, mat1, mat2);
 
         // access second matrix for matrixmul.
         // Also need to conjugate transpose mat1
@@ -133,31 +141,11 @@ __global__ void jones_kernel(
         mat1[5] = -temp_im;
         mat1[7] = -mat1[7];
 
-        // mat3 * mat1
-        mat2[0] = ((mat3[0] * mat1[0]) - (mat3[1] * mat1[1])) +
-            ((mat3[2] * mat1[4]) - (mat3[3] * mat1[5]));
-        mat2[1] = ((mat3[0] * mat1[1]) + (mat3[1] * mat1[0])) +
-            ((mat3[2] * mat1[5]) + (mat3[3] * mat1[4]));
-
-        mat2[2] = ((mat3[0] * mat1[2]) - (mat3[1] * mat1[3])) +
-            ((mat3[2] * mat1[6]) - (mat3[3] * mat1[7]));
-        mat2[3] = ((mat3[0] * mat1[3]) + (mat3[1] * mat1[2])) +
-            ((mat3[2] * mat1[7]) + (mat3[3] * mat1[6]));
-
-        mat2[4] = ((mat3[4] * mat1[0]) - (mat3[5] * mat1[1])) +
-            ((mat3[6] * mat1[4]) - (mat3[7] * mat1[5]));
-        mat2[5] = ((mat3[4] * mat1[1]) + (mat3[5] * mat1[0])) +
-            ((mat3[6] * mat1[5]) + (mat3[7] * mat1[4]));
-
-        mat2[6] = ((mat3[4] * mat1[2]) - (mat3[5] * mat1[3])) +
-            ((mat3[6] * mat1[6]) - (mat3[7] * mat1[7]));
-        mat2[7] = ((mat3[4] * mat1[3]) + (mat3[5] * mat1[2])) +
-            ((mat3[6] * mat1[7]) + (mat3[7] * mat1[6]));
-
+        mat_mul_complex(mat2, mat3, mat1);
 
         // copy mat2 back into visibility
         for (int j = 0; j < npol * CM; j++) {
-            vis[vis_chan + (i * npol * CM) + j] = mat1[j];
+            vis[vis_chan + (i * npol * CM) + j] = mat2[j];
         }// TODO: how to do memcpy for 8 variables?
     }
 
