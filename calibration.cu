@@ -1,7 +1,20 @@
 #include <cstdio>
+#include <iostream>
 #include <cuda_runtime.h>
 
 #include "calibration.cuh"
+
+#define cudaCheckErrors(msg) \
+    do { \
+        cudaError_t __err = cudaGetLastError(); \
+        if (__err != cudaSuccess) { \
+            fprintf(stderr, "Fatal error: %s (%s at %s:%d)\n", \
+                msg, cudaGetErrorString(__err), \
+                __FILE__, __LINE__); \
+            fprintf(stderr, "*** FAILED - ABORTING\n"); \
+            exit(1); \
+        } \
+    } while (0)
 
 #define MAXTHREADS 1024
 // This is the flagging mask application code for the GPU
@@ -161,18 +174,27 @@ void call_flag_mask_kernel(
     const bool* mask,
     float* vis
 ) {
+    std::clog << "dim 1: " << nchan << "; dim 2: " << nbaseline << "; dim 3: " << npol << std::endl;
+    std::clog << ">>> Moving VIS to GPU" << std::endl;
+    int size = nchan * nbaseline * npol;
+
     float* gpu_vis;
     // &gpu_vis gives reference to piece of memory where pointer is stored
-    cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * CM * sizeof(float));
-    cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * CM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_vis, size * CM * sizeof(float));
+    cudaCheckErrors("cudaMalloc vis fail");
+    cudaMemcpy(gpu_vis, vis, size * CM * sizeof(float), cudaMemcpyHostToDevice);
+    cudaCheckErrors("cudaMemcpy vis fail");
 
     bool* gpu_mask;
-    cudaMalloc((void**)&gpu_mask, nchan * nbaseline * npol * sizeof(bool));
-    cudaMemcpy(gpu_mask, mask, nchan * nbaseline * npol * sizeof(bool), cudaMemcpyHostToDevice);
+    cudaMalloc((void**)&gpu_mask, size * sizeof(bool));
+    cudaCheckErrors("cudaMalloc mask fail");
+    cudaMemcpy(gpu_mask, mask, size * sizeof(bool), cudaMemcpyHostToDevice);
+    cudaCheckErrors("cudaMemcpy mask fail");
 
     unsigned int blocks = nchan;
     unsigned int threads_per_block = MAXTHREADS;
 
+    std::clog << ">>> Starting kernel" << std::endl;
     flag_mask_kernel<<<blocks, threads_per_block>>> (nchan, nbaseline, npol, gpu_mask, gpu_vis);
 
     // Check for errors on kernel call

@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <iostream>
 #include <assert.h>
+#include <complex>
 #include <cuda_runtime.h>
 
+#include "lender.hpp"
 #include "calibration.cuh"
 
 void print_flag_mask(int nchan, int nbaseline, int npol, bool* mask) {
@@ -131,15 +133,21 @@ void flag_pol01(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
 }
 
 void test_flagging(int nchan, int nbaseline, int npol) {
-    bool* mask = new bool [nchan * nbaseline * npol] {false};
-    float* vis = new float [nchan * nbaseline * npol * 2];
+    std::vector<size_t> shape {nchan, nbaseline, npol};
+    std::shared_ptr<library<std::complex<float>>> vis_lib = 
+          std::make_shared<library<std::complex<float>>>(shape, 1);
+    std::shared_ptr<library<bool>> mask_lib = 
+          std::make_shared<library<bool>>(shape, 1);
+    auto vis_buf = vis_lib->fill();
+    auto mask_buf = mask_lib->fill();
+
+    bool* mask = mask_buf.get();
+    memset(mask, 0x00, sizeof(bool)*mask_buf.size);
+    float* vis = (float*) vis_buf.get();
 
     flag_chan1_pol2(nchan, nbaseline, npol, mask, vis);
     flag_chan2(nchan, nbaseline, npol, mask, vis);
     flag_pol01(nchan, nbaseline, npol, mask, vis);
-
-    delete[] vis;
-    delete[] mask;
 }
 
 void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
@@ -229,13 +237,14 @@ void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
 int main(int argc, char **argv) {
     // set up size and testing arrays
 
-    int nchan = 2;
+    int nchan = 62128;
     int nant = 3;
     int nbaseline = nant * (nant - 1) / 2;
+    nbaseline = 192;
     int npol = 4;
 
     test_flagging(nchan, nbaseline, npol);
 
-    test_jones_identity(nchan, nbaseline, npol, nant);
+    // test_jones_identity(nchan, nbaseline, npol, nant);
 
 }

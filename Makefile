@@ -6,6 +6,7 @@ CUDA_PATH       ?= /usr/local/cuda-11.2
 CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
 CUDA_LIB_PATH   ?= $(CUDA_PATH)/lib
+LENDER_INC_PATH     ?= ../rci-memory-lender
 
 # CUDA code generation flags
 GENCODE_FLAGS   := -gencode arch=compute_35,code=sm_35 \
@@ -48,7 +49,7 @@ TARGETS = apply
 all: $(TARGETS)
 
 apply: run.cpp apply.o
-	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH)
+	$(CC) $^ -o $@ -O3 $(LDFLAGS) -Wall -I$(CUDA_INC_PATH) -I$(LENDER_INC_PATH)
 
 apply.o: calibration.cu
 	$(NVCC) $(NVCCFLAGS) -O3 $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) -I$(CUDA_INC_PATH) -o $@ -c $<
