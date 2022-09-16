@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <iostream>
+#include <assert.h>
 #include <cuda_runtime.h>
 
 #include "calibration.cuh"
@@ -21,9 +22,9 @@
 
 /* The assumed shape is as follows:
  *     Visibilities:
- *         (channels, baselines, polarizations) - float, float
+ *         (dim1, dim2, polarizations) - float, float
  *     Mask - same as visibilities:
- *         (channels, baselines, polarizations) - bit
+ *         (dim1, dim2, polarizations) - bit
  */
 
 // GPU kernel declaration
@@ -36,34 +37,32 @@
  * polarizations? Then reassigned until for loop runs out.
  */
 __global__ void flag_mask_kernel(
-    int nchan,
-    int nbaseline,
+    int dim1,
+    int dim2,
     int npol,
     const bool* mask,
     float* vis
 ) {
     // TODO: store mask or vis in shared memory for quicker access
-    int mchannel = blockIdx.x * nbaseline * npol;
-    int channel = blockIdx.x * nbaseline * npol * CM;
+    int step1 = blockIdx.x * dim2 * npol;
 
-    for (int i = threadIdx.x; i < nbaseline; i += blockDim.x) {
-        int mbaseline = (i * npol);
-        int baseline = (i * npol) * CM;
+    for (int i = threadIdx.x; i < dim2; i += blockDim.x) { //
+        int step2 = (i * npol);
         // each polarization will be set separately
 
         // use bool to make temp float.
-        float m1 = static_cast<float>(!mask[mchannel + mbaseline]);
-        vis[channel + baseline] *= m1;
-        vis[channel + baseline + IM] *= m1;
-        float m2 = static_cast<float>(!mask[mchannel + mbaseline + 1]);
-        vis[channel + baseline + 2] *= m2;
-        vis[channel + baseline + 2 + IM] *= m2;
-        float m3 = static_cast<float>(!mask[mchannel + mbaseline + 2]);
-        vis[channel + baseline + 4] *= m3;
-        vis[channel + baseline + 4 + IM] *= m3;
-        float m4 = static_cast<float>(!mask[mchannel + mbaseline + 3]);
-        vis[channel + baseline + 6] *= m4;
-        vis[channel + baseline + 6 + IM] *= m4;
+        float m1 = static_cast<float>(!mask[step1 + step2]);
+        vis[(step1*CM) + (step2*CM)] *= m1;
+        vis[(step1*CM) + (step2*CM) + IM] *= m1;
+        float m2 = static_cast<float>(!mask[step1 + step2 + 1]);
+        vis[(step1*CM) + (step2*CM) + 2] *= m2;
+        vis[(step1*CM) + (step2*CM) + 2 + IM] *= m2;
+        float m3 = static_cast<float>(!mask[step1 + step2 + 2]);
+        vis[(step1*CM) + (step2*CM) + 4] *= m3;
+        vis[(step1*CM) + (step2*CM) + 4 + IM] *= m3;
+        float m4 = static_cast<float>(!mask[step1 + step2 + 3]);
+        vis[(step1*CM) + (step2*CM) + 6] *= m4;
+        vis[(step1*CM) + (step2*CM) + 6 + IM] *= m4;
 
     }
 
@@ -168,15 +167,15 @@ __global__ void jones_kernel(
 // Make a function to move memory to the GPU, but unneeded with Bifrost as
 // everything is already on the GPU
 void call_flag_mask_kernel(
-    int nchan,
-    int nbaseline,
+    int dim1,
+    int dim2,
     int npol,
     const bool* mask,
     float* vis
 ) {
-    std::clog << "dim 1: " << nchan << "; dim 2: " << nbaseline << "; dim 3: " << npol << std::endl;
-    std::clog << ">>> Moving VIS to GPU" << std::endl;
-    int size = nchan * nbaseline * npol;
+    std::clog << "dim 1: " << dim1 << "; dim 2: " << dim2 << "; dim 3: " << npol << std::endl;
+    assert(dim1 < 65536); // max blocks allowed is 65535
+    int size = dim1 * dim2 * npol;
 
     float* gpu_vis;
     // &gpu_vis gives reference to piece of memory where pointer is stored
@@ -191,11 +190,11 @@ void call_flag_mask_kernel(
     cudaMemcpy(gpu_mask, mask, size * sizeof(bool), cudaMemcpyHostToDevice);
     cudaCheckErrors("cudaMemcpy mask fail");
 
-    unsigned int blocks = nchan;
+    unsigned int blocks = dim1;
     unsigned int threads_per_block = MAXTHREADS;
 
     std::clog << ">>> Starting kernel" << std::endl;
-    flag_mask_kernel<<<blocks, threads_per_block>>> (nchan, nbaseline, npol, gpu_mask, gpu_vis);
+    flag_mask_kernel<<<blocks, threads_per_block>>> (dim1, dim2, npol, gpu_mask, gpu_vis);
 
     // Check for errors on kernel call
     cudaError err = cudaGetLastError();
@@ -204,7 +203,7 @@ void call_flag_mask_kernel(
     else
         fprintf(stderr, "No kernel error detected\n");
 
-     cudaMemcpy(vis, gpu_vis, nchan * nbaseline * npol * CM * sizeof(float), cudaMemcpyDeviceToHost);
+     cudaMemcpy(vis, gpu_vis, size * CM * sizeof(float), cudaMemcpyDeviceToHost);
 
      cudaFree(gpu_vis);
      cudaFree(gpu_mask);
