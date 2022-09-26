@@ -71,11 +71,11 @@ __global__ void flag_mask_kernel(
 
 /*  The assumed shape is as follows:
  *      Visibilities:
- *          (channels, baselines, polarizations) - float, float
+ *          (baselines, channels, polarizations) - float, float
  *      Antennas:
  *          (baselines, antennas) - int
  *      Jones:
- *          (channels, antennas, polarizations) - float, float
+ *          (antennas, channels, polarizations) - float, float
  */
 
 __device__ void mat_mul_complex(
@@ -114,23 +114,26 @@ __global__ void jones_kernel(
     float* jones
 ) {
     // TODO: put antennas and/or jones into shared mem for faster access
-    int jones_chan = blockIdx.x * nant * npol * CM;
-    int vis_chan = blockIdx.x * nbaseline * npol * CM;
+    int step_size = nchan * npol * CM;
+    int base = blockIdx.x;
+    
+    int ant1 = ant[(blockIdx.x * CM)];
+    int ant2 = ant[(blockIdx.x * CM) + 1];
 
-    for (int i = threadIdx.x; i < nbaseline; i += blockDim.x) {
+    for (int i = threadIdx.x; i < nchan; i += blockDim.x) {
+        int chan = i * npol * CM;
         // [0+1i  2+3i]
         // [4+5i  6+7i]
 
         // access first matrix for matrixmul mat1 * mat2
         float mat1[8];
-        // TODO: check order that reference is called
-        float* matrix = &jones[jones_chan + (ant[(i * CM)] * npol * CM)];
+        float* matrix = &jones[(ant1 * step_size) + chan];
         for (int j = 0; j < npol * CM; j++) {
             mat1[j] = matrix[j];
         }
 
         float mat2[8];
-        matrix = &vis[vis_chan + (i * npol * CM)];
+        matrix = &vis[(base * step_size) + chan];
         for (int j = 0; j < npol * CM; j++) {
             mat2[j] = matrix[j];
         }
@@ -140,7 +143,7 @@ __global__ void jones_kernel(
 
         // access second matrix for matrixmul.
         // Also need to conjugate transpose mat1
-        matrix = &jones[jones_chan + (ant[(i * CM) + 1] * npol * CM)];
+        matrix = &jones[(ant2 * step_size) + chan];
         for (int j = 0; j < npol * CM; j++) {
             mat1[j] = matrix[j];
         }
@@ -157,7 +160,7 @@ __global__ void jones_kernel(
 
         // copy mat2 back into visibility
         for (int j = 0; j < npol * CM; j++) {
-            vis[vis_chan + (i * npol * CM) + j] = mat2[j];
+            vis[(base * step_size) + chan] = mat2[j];
         }// TODO: how to do memcpy for 8 variables?
     }
 
@@ -218,22 +221,26 @@ void call_jones_kernel(
     int* ant,
     float* jones
 ) {
+    std::clog << ">>> VIS" << std::endl;
     float* gpu_vis;
     // &gpu_vis gives reference to piece of memory where pointer is stored
     cudaMalloc((void**)&gpu_vis, nchan * nbaseline * npol * CM * sizeof(float));
     cudaMemcpy(gpu_vis, vis, nchan * nbaseline * npol * CM * sizeof(float), cudaMemcpyHostToDevice);
 
+    std::clog << ">>> ANT" << std::endl;
     int* gpu_ant;
     cudaMalloc((void**)&gpu_ant, nbaseline * CM * sizeof(int));
     cudaMemcpy(gpu_ant, ant, nbaseline * CM * sizeof(int), cudaMemcpyHostToDevice);
 
+    std::clog << ">>> JONES" << std::endl;
     float* gpu_jones;
     cudaMalloc((void**)&gpu_jones, nchan * nant * npol * CM * sizeof(float));
     cudaMemcpy(gpu_jones, jones, nchan * nant * npol * CM * sizeof(float), cudaMemcpyHostToDevice);
 
-    unsigned int blocks = nchan;
+    unsigned int blocks = nbaseline;
     unsigned int threads_per_block = MAXTHREADS;
 
+    std::clog << ">>> Starting kernel" << std::endl;
     jones_kernel<<<blocks, threads_per_block>>> (nchan, nbaseline, npol, nant, gpu_vis, gpu_ant, gpu_jones);
 
     // Check for errors on kernel call

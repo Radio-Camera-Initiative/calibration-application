@@ -7,6 +7,8 @@
 #include "lender.hpp"
 #include "calibration.cuh"
 
+#define CM 2
+
 void print_flag_mask(int nchan, int nbaseline, int npol, bool* mask) {
     for (int c = 0; c < nchan; c++) {
         for (int b = 0; b < nbaseline; b++) {
@@ -26,11 +28,11 @@ void print_visf(int nchan, int nbaseline, int npol, float* vis) {
     for (int c = 0; c < nchan; c++) {
         for (int b = 0; b < nbaseline; b++) {
             std::cout << "[ ";
-            for (int p = 0; p < npol * 2; p += 2) {
+            for (int p = 0; p < npol * CM; p += CM) {
                 std::cout << 
-                    vis[(c * nbaseline * npol * 2) + (b * npol * 2) + p] 
+                    vis[(c * nbaseline * npol * CM) + (b * npol * CM) + p] 
                     << " + " << 
-                    vis[(c * nbaseline * npol * 2) + (b * npol * 2) + p + IM] 
+                    vis[(c * nbaseline * npol * CM) + (b * npol * CM) + p + IM] 
                     << 'i' << ' ';
             }
             std::cout << "] ";
@@ -44,11 +46,11 @@ void print_jones(int nchan, int nant, int npol, float* jones) {
     for (int c = 0; c < nchan; c++) {
         for (int b = 0; b < nant; b++) {
             std::cout << "[ ";
-            for (int p = 0; p < npol * 2; p += 2) {
+            for (int p = 0; p < npol * CM; p += CM) {
                 std::cout << 
-                    jones[(c * nant * npol * 2) + (b * npol * 2) + p] 
+                    jones[(c * nant * npol * CM) + (b * npol * CM) + p] 
                     << " + " << 
-                    jones[(c * nant * npol * 2) + (b * npol * 2) + p + IM] 
+                    jones[(c * nant * npol * CM) + (b * npol * CM) + p + IM] 
                     << 'i' << ' ';
             }
             std::cout << "] ";
@@ -78,7 +80,7 @@ void flag_chan1_pol2(int nchan, int nbaseline, int npol, bool* mask, float* vis)
     }
 
     // fill with 1s
-    std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
+    std::fill_n(vis, nchan * nbaseline * npol * CM, 1.0);
 
     // now that everything is initialized, run the GPU
     call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
@@ -100,7 +102,7 @@ void flag_chan2(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
     }
 
     // fill with 1s
-    std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
+    std::fill_n(vis, nchan * nbaseline * npol * CM, 1.0);
 
     // now that everything is initialized, run the GPU
     call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
@@ -121,7 +123,7 @@ void flag_pol01(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
         }
     }
     // fill with 1s
-    std::fill_n(vis, nchan * nbaseline * npol * 2, 1.0);
+    std::fill_n(vis, nchan * nbaseline * npol * CM, 1.0);
 
     // now that everything is initialized, run the GPU
     call_flag_mask_kernel(nchan, nbaseline, npol, mask, vis);
@@ -151,26 +153,28 @@ void test_flagging(int nchan, int nbaseline, int npol) {
 }
 
 void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
-    float* vis = new float [nchan * nbaseline * npol * 2];
+    float* vis = new float [nchan * nbaseline * npol * CM];
+    float* orig = new float [nchan * nbaseline * npol * CM];
     // fill with 1s
-    // std::fill_n(vis, nchan * nbaseline * npol * 2, 1);
+    // std::fill_n(vis, nchan * nbaseline * npol * CM, 1);
 
-    // fill with identity matrices
-    for (int c = 0; c < nchan; c++) {
-        int channel = (c * npol * nant * 2);
-        for (int a = 0; a < nbaseline; a++) {
-            int baseline = (a * npol * 2);
-            for (int i = 0; i < npol * 2; i++) {
-                vis[channel + baseline + i] = (float) i;
+    // fill with indices matrices
+    for (int a = 0; a < nbaseline; a++) {
+            int baseline = (a * nchan * npol * CM);
+        for (int c = 0; c < nchan; c++) {
+            int channel = (c * npol * CM); 
+            for (int i = 0; i < npol * CM; i++) {
+                vis[channel + baseline + i] = (float) (channel + baseline + i);
+                orig[channel + baseline + i] = (float) (channel + baseline + i);
             }
         }
     }
 
     // fill with identity matrices
     // for (int c = 0; c < nchan; c++) {
-    //     int channel = (c * npol * nant * 2);
+    //     int channel = (c * npol * nant * CM);
     //     for (int a = 0; a < nbaseline; a++) {
-    //         int baseline = (a * npol * 2);
+    //         int baseline = (a * npol * CM);
     //         // make the identity matrix for each antenna
     //         vis[channel + baseline] = 1.0f;
     //         vis[channel + baseline + 6] = 1.0f;
@@ -181,16 +185,16 @@ void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
 
     // make jones matrices
 
-    float* jones = new float [nchan * nant * npol * 2];
+    float* jones = new float [nchan * nant * npol * CM];
     // fill with 1s
-    // std::fill_n(jones, nchan * nant * npol * 2, 1);
+    // std::fill_n(jones, nchan * nant * npol * CM, 1);
 
     // fill with indicies
     // for (int c = 0; c < nchan; c++) {
-    //     int channel = (c * npol * nant * 2);
+    //     int channel = (c * npol * nant * CM);
     //     for (int a = 0; a < nant; a++) {
-    //         int antenna = (a * npol * 2);
-    //         for (int i = 0; i < npol * 2; i++) {
+    //         int antenna = (a * npol * CM);
+    //         for (int i = 0; i < npol * CM; i++) {
     //             jones[channel + antenna + i] = (float) i;
     //         }
     //     }
@@ -198,12 +202,18 @@ void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
 
     // fill with identity matrices
     for (int c = 0; c < nchan; c++) {
-        int channel = (c * npol * nant * 2);
+        int channel = (c * npol * nant * CM);
         for (int a = 0; a < nant; a++) {
-            int antenna = (a * npol * 2);
+            int antenna = (a * npol * CM);
             // make the identity matrix for each antenna
             jones[channel + antenna] = 1.0f;
+            jones[channel + antenna + 1] = 0.0f;
+            jones[channel + antenna + 2] = 0.0f;
+            jones[channel + antenna + 3] = 0.0f;
+            jones[channel + antenna + 4] = 0.0f;
+            jones[channel + antenna + 5] = 0.0f;
             jones[channel + antenna + 6] = 1.0f;
+            jones[channel + antenna + 7] = 0.0f;
         }
     }
     
@@ -239,12 +249,14 @@ int main(int argc, char **argv) {
 
     int nchan = 62128;
     int nant = 3;
-    int nbaseline = nant * (nant - 1) / 2;
-    nbaseline = 192;
+    int nbaseline = 192;
     int npol = 4;
 
     test_flagging(nchan, nbaseline, npol);
 
-    // test_jones_identity(nchan, nbaseline, npol, nant);
+    nchan = 5;
+    nbaseline = nant * (nant - 1) / 2;
+
+    test_jones_identity(nchan, nbaseline, npol, nant);
 
 }
