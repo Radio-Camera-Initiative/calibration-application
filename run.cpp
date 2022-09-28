@@ -152,11 +152,21 @@ void test_flagging(int nchan, int nbaseline, int npol) {
     flag_pol01(nchan, nbaseline, npol, mask, vis);
 }
 
+void check_same (int nbaseline, int nchan, int npol, float* vis, float* orig) {
+    for (int a = 0; a < nbaseline; a++) {
+            int baseline = (a * nchan * npol * CM);
+        for (int c = 0; c < nchan; c++) {
+            int channel = (c * npol * CM); 
+            for (int i = 0; i < npol * CM; i++) {
+                assert(vis[channel + baseline + i] == orig[channel + baseline + i]);
+            }
+        }
+    }
+}
+
 void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
     float* vis = new float [nchan * nbaseline * npol * CM];
     float* orig = new float [nchan * nbaseline * npol * CM];
-    // fill with 1s
-    // std::fill_n(vis, nchan * nbaseline * npol * CM, 1);
 
     // fill with indices matrices
     for (int a = 0; a < nbaseline; a++) {
@@ -170,35 +180,8 @@ void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
         }
     }
 
-    // fill with identity matrices
-    // for (int c = 0; c < nchan; c++) {
-    //     int channel = (c * npol * nant * CM);
-    //     for (int a = 0; a < nbaseline; a++) {
-    //         int baseline = (a * npol * CM);
-    //         // make the identity matrix for each antenna
-    //         vis[channel + baseline] = 1.0f;
-    //         vis[channel + baseline + 6] = 1.0f;
-    //     }
-    // }
-
-    print_visf(nchan, nbaseline, npol, vis);
-
     // make jones matrices
-
     float* jones = new float [nchan * nant * npol * CM];
-    // fill with 1s
-    // std::fill_n(jones, nchan * nant * npol * CM, 1);
-
-    // fill with indicies
-    // for (int c = 0; c < nchan; c++) {
-    //     int channel = (c * npol * nant * CM);
-    //     for (int a = 0; a < nant; a++) {
-    //         int antenna = (a * npol * CM);
-    //         for (int i = 0; i < npol * CM; i++) {
-    //             jones[channel + antenna + i] = (float) i;
-    //         }
-    //     }
-    // }
 
     // fill with identity matrices
     for (int c = 0; c < nchan; c++) {
@@ -216,9 +199,6 @@ void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
             jones[channel + antenna + 7] = 0.0f;
         }
     }
-    
-
-    print_jones(nchan, nant, npol, jones);
 
     int* ants = new int [nbaseline * 2];
     int iter = 0;
@@ -236,11 +216,86 @@ void test_jones_identity(int nchan, int nbaseline, int npol, int nant) {
     // now that everything is initialized, run the GPU
     call_jones_kernel(nchan, nbaseline, npol, nant, vis, ants, jones);
 
-    print_visf(nchan, nbaseline, npol, vis);
+    check_same(nbaseline, nchan, npol, vis, orig);
+
+    std::cout << "Jones Identity test Passed" << std::endl;
 
     delete[] vis;
     delete[] ants;
     delete[] jones;
+    delete[] orig;
+}
+
+void test_jones(int nchan, int nbaseline, int npol, int nant) {
+    float* vis = new float [nchan * nbaseline * npol * CM];
+    float* orig = new float [nchan * nbaseline * npol * CM];
+
+    // fill all vis matrices same way
+    for (int m = 0; m < nbaseline * nchan * npol * CM; m += 8) {
+        vis[m ] = 2.0f;
+        vis[m + 1] = 4.0f;
+        vis[m + 2] = 5.0f;
+        vis[m + 3] = 3.0f;
+        vis[m + 4] = 1.0f;
+        vis[m + 5] = 9.0f;
+        vis[m + 6] = 6.0f;
+        vis[m + 7] = 3.0f;
+    }
+    for (int m = 0; m < nbaseline * nchan * npol * CM; m += 8) {
+        orig[m ] = 110.0f;
+        orig[m + 1] = 87.0f;
+        orig[m + 2] = 202.0f;
+        orig[m + 3] = 411.0f;
+        orig[m + 4] = 418.0f;
+        orig[m + 5] = 203.0f;
+        orig[m + 6] = 958.0f;
+        orig[m + 7] = 1135.0f;
+    }
+
+    // make jones matrices
+
+    float* jones = new float [nchan * nant * npol * CM];
+
+    for (int c = 0; c < nchan; c++) {
+        int channel = (c * npol * nant * CM);
+        for (int a = 0; a < nant; a++) {
+            int antenna = (a * npol * CM);
+            // make the matrix for each antenna
+            jones[channel + antenna] = 0.0f;
+            jones[channel + antenna + 1] = 1.0f;
+            jones[channel + antenna + 2] = 2.0f;
+            jones[channel + antenna + 3] = 3.0f;
+            jones[channel + antenna + 4] = 4.0f;
+            jones[channel + antenna + 5] = 5.0f;
+            jones[channel + antenna + 6] = 6.0f;
+            jones[channel + antenna + 7] = 7.0f;
+        }
+    }
+
+    int* ants = new int [nbaseline * 2];
+    int iter = 0;
+    for (int i = 0; i < nant; i++) {
+        for (int j = i+1; j < nant; j++) {
+            ants[iter] = i;
+            assert(iter < nbaseline * 2);
+            iter += 1;
+            ants[iter] = j;
+            assert(iter < nbaseline * 2);
+            iter += 1;
+        }
+    }
+
+    // now that everything is initialized, run the GPU
+    call_jones_kernel(nchan, nbaseline, npol, nant, vis, ants, jones);
+
+    check_same(nbaseline, nchan, npol, vis, orig);
+
+    std::cout << "Jones random number test Passed" << std::endl;
+
+    delete[] vis;
+    delete[] ants;
+    delete[] jones;
+    delete[] orig;
 }
 
 // main function to test out the GPU function
@@ -258,5 +313,6 @@ int main(int argc, char **argv) {
     nbaseline = nant * (nant - 1) / 2;
 
     test_jones_identity(nchan, nbaseline, npol, nant);
+    test_jones(nchan, nbaseline, npol, nant);
 
 }

@@ -160,7 +160,7 @@ __global__ void jones_kernel(
 
         // copy mat2 back into visibility
         for (int j = 0; j < npol * CM; j++) {
-            vis[(base * step_size) + chan] = mat2[j];
+            vis[(base * step_size) + chan + j] = mat2[j];
         }// TODO: how to do memcpy for 8 variables?
     }
 
