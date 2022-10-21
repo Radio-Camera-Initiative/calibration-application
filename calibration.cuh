@@ -1,11 +1,12 @@
 #define IM 1
+#define CM 2
 
 void call_flag_mask_kernel(
-    int nchan,
-    int nbaseline,
+    int dim1,
+    int dim2,
     int npol,
     const bool* mask,
-    int* vis
+    float* vis
 );
 
 void call_jones_kernel(
