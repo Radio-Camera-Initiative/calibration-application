@@ -2,7 +2,7 @@ CC = /usr/bin/g++
 
 LD_FLAGS = -lrt
 
-CUDA_PATH       ?= /usr/local/cuda-11.2
+CUDA_PATH       ?= /usr/local/cuda-11.8
 CUDA_INC_PATH   ?= $(CUDA_PATH)/include
 CUDA_BIN_PATH   ?= $(CUDA_PATH)/bin
 CUDA_LIB_PATH   ?= $(CUDA_PATH)/lib
@@ -42,7 +42,7 @@ else
 	NVCCFLAGS := -m64
 endif
 
-NVCCFLAGS += --compiler-bindir $(CC)
+NVCCFLAGS += -lineinfo --compiler-bindir $(CC)
 
 TARGETS = apply
 

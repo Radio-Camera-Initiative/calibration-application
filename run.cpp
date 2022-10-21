@@ -134,7 +134,11 @@ void flag_pol01(int nchan, int nbaseline, int npol, bool* mask, float* vis) {
     std::cout << "Test Passed" << std::endl;
 }
 
-void test_flagging(int nchan, int nbaseline, int npol) {
+void test_flagging(
+    long unsigned int nchan, 
+    long unsigned int nbaseline, 
+    long unsigned int npol
+) {
     std::vector<size_t> shape {nchan, nbaseline, npol};
     std::shared_ptr<library<std::complex<float>>> vis_lib = 
           std::make_shared<library<std::complex<float>>>(shape, 1);
@@ -158,7 +162,9 @@ void check_same (int nbaseline, int nchan, int npol, float* vis, float* orig) {
         for (int c = 0; c < nchan; c++) {
             int channel = (c * npol * CM); 
             for (int i = 0; i < npol * CM; i++) {
-                assert(vis[channel + baseline + i] == orig[channel + baseline + i]);
+                assert(
+                    vis[channel + baseline + i] == orig[channel + baseline + i]
+                );
             }
         }
     }
